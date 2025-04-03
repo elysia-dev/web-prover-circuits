@@ -4,6 +4,9 @@ template Parser(DATA_BYTES) {
     signal input data[DATA_BYTES];
 
     component State[DATA_BYTES];
+    // 초기값과 엔드값은 셋팅해두고 시작
+
+    // 초기값
     State[0]                     = HttpStateUpdate();
     State[0].byte                <== data[0];
     State[0].parsing_start       <== 1;
@@ -45,6 +48,7 @@ template Parser(DATA_BYTES) {
         log("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
     }
 
+    // end값
     // Verify machine ends in a valid state
     State[DATA_BYTES - 1].next_parsing_start       === 0;
     State[DATA_BYTES - 1].next_parsing_header      === 0;
