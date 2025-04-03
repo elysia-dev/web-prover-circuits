@@ -4,20 +4,26 @@ include "circomlib/circuits/comparators.circom";
 include "machine.circom";
 include "../utils/hash.circom";
 
+  // step_in[0] <= 0
+  // step_in[1] <= 0
+  // step_in[2] <= cipher_text_digest_pow
+  // step_in[3] <= machine_state_digest
+  // step_in[4] <= data.hashed
+  // step_in[5] <= Total number of matches to expect (sl + ...)
 template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
-    signal input step_in[PUBLIC_IO_LENGTH];
+    signal input step_in[PUBLIC_IO_LENGTH]; // 11개로 설정됨
     signal output step_out[PUBLIC_IO_LENGTH];
 
     // next_parsing_start, next_parsing_header, next_parsing_field_name, next_parsing_field_value, next_parsing_body, next_line_status, line_digest, main_monomial
-    signal input machine_state[8];
+    signal input machine_state[8]; // 아마도 F1, F2 를 계산할때 넣어주는 기본 state값
 
     signal input ciphertext_digest;
 
     // step_in[2] = ciphertext_digest ** plaintext_ctr
-    signal ciphertext_digest_pow[DATA_BYTES+1];
+    signal ciphertext_digest_pow[DATA_BYTES+1]; // 1, r, r^2, r^3, ...
     ciphertext_digest_pow[0] <== step_in[2];
-    signal mult_factor[DATA_BYTES];
 
+    signal mult_factor[DATA_BYTES]; 
     signal input data[DATA_BYTES];
     signal isPadding[DATA_BYTES]; // == 1 in the case we hit padding number
     signal zeroed_data[DATA_BYTES];
@@ -27,10 +33,18 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
         mult_factor[i] <== (1 - isPadding[i]) * ciphertext_digest + isPadding[i];
         ciphertext_digest_pow[i+1] <== ciphertext_digest_pow[i] * mult_factor[i];
     }
+    // data를 coef로 사용한는 polynomial, r을 계수로 사용하는 다항식. D_(m,n)(r)
+    // 다음 F를 위해서, 폴리노미얼에 사용할 r^(n-1) 을 K로 넣어준다. step_in[2] 에 넣어준다.
+    // 초기 data 평가값
     signal pt_digest <== PolynomialDigestWithCounter(DATA_BYTES)(zeroed_data, ciphertext_digest, step_in[2]);
     // log("inner plaintext_digest: ", pt_digest);
 
     // Contains digests of start line and all intended headers (up to `MAX_NUMBER_OF_HEADERS`)
+
+    // start line, headers 의 비교를 위한 것 (not body)
+    // start line과 headers(최대 2개) 가 항상 같은것이 들어왔는지 확인하는것, F0, F1에서 모두 같은지
+
+    // 각 line 전체에 대한 digest값
     signal input main_digests[MAX_NUMBER_OF_HEADERS + 1];
     signal not_contained[MAX_NUMBER_OF_HEADERS + 1];
     for(var i = 0 ; i < MAX_NUMBER_OF_HEADERS + 1 ; i++) {
@@ -39,8 +53,11 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
 
     // assertions:
     // - check step_in[3] = machine state hash digest
+
+    // 인풋으로 들어온 machine_state가 올바른지 확인
     signal machine_state_digest <== PolynomialDigest(8)(machine_state, ciphertext_digest);
     step_in[3] === machine_state_digest;
+
     // - check step_in[4] = start line hash digest + all header hash digests
     // TODO: I don't like this `MAX_NUMBER_OF_HEADERS + 1` now. It should just be `NUMBER_OF_STATEMENTS_TO_LOCK` or something
     signal option_hash[MAX_NUMBER_OF_HEADERS + 1];
@@ -51,6 +68,9 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
         main_digests_hashed[i] <== (1 - not_contained[i]) * option_hash[i];
         accumulated_main_digests_hashed +=  main_digests_hashed[i];
     }
+
+    // input으로 들어온 main_digests와 step_in[4](이건 테스트에서 계산해서 들어온값) 이 일치하는지 확인
+    // 그러니까 hash랑 인풋이 같은지 확인하는 과정. 올바른 인풋을 넣었는가
     step_in[4] === accumulated_main_digests_hashed;
 
     // populate the state machine with the previous state
@@ -75,7 +95,15 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
     }
 
 
-    signal main_monomials[DATA_BYTES];
+
+    // main_monomials  <- startline, header 에서 각 line마다의 계수를 나타냄
+    // 0 1 r r2 r3 r4 r5 r6 r7 0
+    // H T T  P  S  2  0  0 \r \c
+    // 0 1 r r2 r3 r4 r5
+    // C o n  n  e  c  t
+
+    // startline, header 에서 한 줄마다 적용된 r의 승수
+    signal main_monomials[DATA_BYTES]; // line의 column 별로 1, r, r^2 ... 을 만들어준다., line이 넘어가면 1로 초기화
     main_monomials[0] <== machine_state[7];
 
     signal is_line_change[DATA_BYTES-1];
@@ -97,6 +125,9 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
     signal monomial_is_zero[DATA_BYTES];
     signal accum_prev[DATA_BYTES];
     var num_matched = 0;
+
+    // main_monomials, data를 이용해서 계산된 digest값
+    // 각 글자에 대한 digest값
     signal line_digest[DATA_BYTES + 1];
     // Set this to what the previous digest was
     line_digest[0] <== machine_state[6];
@@ -112,15 +143,18 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
 
     // BODY
     // step_in[6] is the (ciphertext digest ** body_ctr)
-    signal body_ctr_is_zero <== IsEqual()([step_in[6], 0]);
+    signal body_ctr_is_zero <== IsEqual()([step_in[6], 0]); 
     signal initial_pow_accumulation <== step_in[6] * ciphertext_digest;
-    signal pow_accumulation <== initial_pow_accumulation + body_ctr_is_zero * State[0].parsing_body; // pow_accumulation = 0 if we are not in the body
+    signal pow_accumulation <== initial_pow_accumulation + body_ctr_is_zero * State[0].parsing_body; // pow_accumulation = 0 if we are not in the body, body에 있다면 (ciphertext_digest ** body_ctr)
 
     // log("pow_accumulation: ", pow_accumulation);
     signal body_monomials_pow_accumulation[DATA_BYTES]; // power of monomials for the body
+
+    // body 에 사용되는 글자갯수만큼 적용된 r 의 승수
     signal body_monomials[DATA_BYTES]; // power of monomials for the body
-    signal body_ctr[DATA_BYTES]; // body counter
+    signal body_ctr[DATA_BYTES]; // body counter - body에 있는 character의 갯수를 센다. 뒤에 padding에 대해선 마지막 counter를 유지한다.
     signal body_switch[DATA_BYTES -1]; // switch to add the previous monomial or not
+    // body_nomials와 data를 이용해서 계싼된 digest
     signal body_digest[DATA_BYTES]; // body digest
     body_monomials[0] <== pow_accumulation; // (ciphertext_digest ** body_ctr) * State.parsing_body (0 if we are not in the body)
     body_ctr[0]     <== body_ctr_is_zero * State[0].parsing_body + (1 - body_ctr_is_zero); // checks if we are in the body
@@ -130,7 +164,7 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
     for(var i = 0 ; i < DATA_BYTES - 1 ; i++) {
         // log("State[",i+1,"].parsing_body: ", State[i+1].parsing_body);
         body_ctr[i + 1]        <== body_ctr[i] + State[i + 1].parsing_body * (1 - isPadding[i + 1]);
-        body_switch[i]           <== IsEqual()([body_ctr[i + 1], 1]); // check if we are in the body
+        body_switch[i]           <== IsEqual()([body_ctr[i + 1], 1]); // check if we are on the start of the body
         // log("body_switch[",i,"] = ", body_switch[i]);
         body_monomials_pow_accumulation[i] <== body_monomials[i] * ciphertext_digest + body_switch[i]; // add the previous monomial if we are in the body
         body_monomials[i + 1]    <== (body_monomials[i] - body_monomials_pow_accumulation[i]) * isPadding[i + 1] + body_monomials_pow_accumulation[i]; // do not update monomials if padding
@@ -139,10 +173,13 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
     }
 
     // Note: This body digest computed here is just a diff since we added the other component before
-    step_out[0] <== step_in[0] - pt_digest + body_digest[DATA_BYTES - 1];
-    step_out[1] <== step_in[1];
-    step_out[2] <== ciphertext_digest_pow[DATA_BYTES];
+    step_out[0] <== step_in[0] - pt_digest + body_digest[DATA_BYTES - 1]; // diff. 이전 F에서 처리한 값과 현재 F에서 처리한 값의 차이
+    step_out[1] <== step_in[1]; // !NOTE: 이거 사용되는 곳이 없음.
+    step_out[2] <== ciphertext_digest_pow[DATA_BYTES]; // r^n
     // pass machine state to next iteration
+    // '마지막 글자의 머신 상태' 를 digest로 만들어 전달
+    // 다음 F 에서, '이전 스텝에서 올바른 machine state 가 넘어왔다' 라는 걸 확인할때 사용하기위해 state를 digest해서 전달, 연결을 보장하기위함
+    // machine state를 통짜로 넘기는것보다 hash만을 넘기기때문에 효율적이다.
     step_out[3] <== PolynomialDigest(8)(
         [State[DATA_BYTES - 1].next_parsing_start,
          State[DATA_BYTES - 1].next_parsing_header,
@@ -150,8 +187,8 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
          State[DATA_BYTES - 1].next_parsing_field_value,
          State[DATA_BYTES - 1].next_parsing_body,
          State[DATA_BYTES - 1].next_line_status,
-         line_digest[DATA_BYTES],
-         main_monomials[DATA_BYTES - 1] * ciphertext_digest
+         line_digest[DATA_BYTES], // 이 F에서 처리가끝났음. 마지막 엘레먼트에 대한 line_digest
+         main_monomials[DATA_BYTES - 1] * ciphertext_digest // 이 F에서 처리가끝났음. 마지막 엘레먼트에 대한 main_monomial
         ],
         ciphertext_digest
     );
@@ -159,24 +196,32 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
     step_out[5] <== step_in[5] - num_matched; // No longer check above, subtract here so circuits later check
     step_out[6] <== body_monomials[DATA_BYTES - 1];
 
-    step_out[7] <== 1; // TODO: can i continue this counter?
-    step_out[8] <== 0; // TODO: This is a hack to make the circuit work. We should remove this in the future
+    step_out[7] <== 1; // TODO: can i continue this counter? !NOTE모르겠어요
+    step_out[8] <== 0; // TODO: This is a hack to make the circuit work. We should remove this in the future !NOTE: 모르겠어요.
     for (var i = 9 ; i < PUBLIC_IO_LENGTH ; i++) {
         step_out[i] <== step_in[i];
     }
 
-    // log("next_parsing_start: ", State[DATA_BYTES - 1].next_parsing_start);
-    // log("next_parsing_header: ", State[DATA_BYTES - 1].next_parsing_header);
-    // log("next_parsing_field_name: ", State[DATA_BYTES - 1].next_parsing_field_name);
-    // log("next_parsing_field_value: ", State[DATA_BYTES - 1].next_parsing_field_value);
-    // log("next_parsing_body: ", State[DATA_BYTES - 1].next_parsing_body);
-    // log("next_line_status: ", State[DATA_BYTES - 1].next_line_status);
-    // log("line_digest: ", line_digest[DATA_BYTES]);
-    // log("main_monomial: ", main_monomials[DATA_BYTES - 1] * ciphertext_digest);
-    // log("body_digest: ", body_digest[DATA_BYTES - 1]);
+    log("next_parsing_start: ", State[DATA_BYTES - 1].next_parsing_start);
+    log("next_parsing_header: ", State[DATA_BYTES - 1].next_parsing_header);
+    log("next_parsing_field_name: ", State[DATA_BYTES - 1].next_parsing_field_name);
+    log("next_parsing_field_value: ", State[DATA_BYTES - 1].next_parsing_field_value);
+    log("next_parsing_body: ", State[DATA_BYTES - 1].next_parsing_body);
+    log("next_line_status: ", State[DATA_BYTES - 1].next_line_status);
+    log("line_digest: ", line_digest[DATA_BYTES]);
+    log("main_monomial: ", main_monomials[DATA_BYTES - 1] * ciphertext_digest);
+    log("body_digest: ", body_digest[DATA_BYTES - 1]);
+    log("body_monomials: ", body_monomials[DATA_BYTES - 1])
 
-    // for (var i = 0 ; i < PUBLIC_IO_LENGTH ; i++) {
-    //     log("step_out[",i,"] = ", step_out[i]);
-    // }
-    // log("xxxxx HTTP Verification Done xxxxx");
+    for (var i = 0 ; i < PUBLIC_IO_LENGTH ; i++) {
+        log("step_out[",i,"] = ", step_out[i]);
+    }
+    log("xxxxx HTTP Verification Done xxxxx");
 }
+
+
+// main_digests: 각 input(line)에 대한 digest [MAX_NUMBER_OF_HEADERS + 1]
+    // - input 데이터 검증에 사용됨
+// line_digest: 각 글자에 대한 digest - start line, header에 해당하는 글자 갯수
+// body_digest: 각 글자에 대한 digest - body에 해당하는 글자 갯수
+    //  - assert 에서 사용됨
