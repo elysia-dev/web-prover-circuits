@@ -58,6 +58,23 @@ function ConvertBytesArrayToString(bytesArray) {
   return bytesArray.map((byte) => String.fromCharCode(byte)).join("");
 }
 
+// HTTP/1.1 200 OK
+// content-type: application/json; charset=utf-8
+// content-encoding: gzip
+// Transfer-Encoding: chunked
+
+// {
+//    "data": {
+//        "items": [
+//            {
+//                "data": "Artist",
+//                "profile": {
+//                 "name": "Taylor Swift"
+//                }
+//            }
+//        ]
+//    }
+// }
 const http_response_plaintext = [
   72, 84, 84, 80, 47, 49, 46, 49, 32, 50, 48, 48, 32, 79, 75, 13, 10, 99, 111,
   110, 116, 101, 110, 116, 45, 116, 121, 112, 101, 58, 32, 97, 112, 112, 108,
@@ -86,6 +103,14 @@ console.log(
   convertedHttpResponsePlaintext
 );
 
+// }Û]1_²m0$Â.ïFÐ%ÔÃ¾&×ñTÌ§¸³¬»&K{`Q$ãâþ±Zñ·£ÒX
+//   °       záS«?zK^£MUnZäé9¯y£¹d"  ü¢ß;Ýjh
+//                                          y1BÜA«¥ø
+//                                                  Ö!m9Ú9¡ø¬1Îµ/çWH`u-MùGW²ïôFv´°Z\PÝ±VxÞßômâa«Ò&u£ÌßîÑ:;dVñg%»O$
+//   «)¸-À­Û
+
+//   ö¾6®c
+//        Ò_¦v2BèÀh^a¢Z¹lÝÓ÷¸ý ððY6¡æ¡Ùåû!ÜæfõÜC
 const http_response_ciphertext = [
   2, 125, 219, 141, 140, 93, 49, 129, 95, 178, 135, 109, 48, 36, 194, 46, 239,
   155, 160, 70, 208, 147, 37, 212, 17, 195, 149, 190, 38, 215, 23, 241, 84, 204,
@@ -135,12 +160,14 @@ console.log(
   convertedHttpResponseCiphertextDup
 );
 
+// HTTP/1.1 200 OK
 const http_start_line = [
   72, 84, 84, 80, 47, 49, 46, 49, 32, 50, 48, 48, 32, 79, 75,
 ];
 const convertedHttpStartLine = ConvertBytesArrayToString(http_start_line);
 console.log("convertedHttpStartLine \n", convertedHttpStartLine);
 
+// content-type: application/json; charset=utf-8
 const http_header_0 = [
   99, 111, 110, 116, 101, 110, 116, 45, 116, 121, 112, 101, 58, 32, 97, 112,
   112, 108, 105, 99, 97, 116, 105, 111, 110, 47, 106, 115, 111, 110, 59, 32, 99,
@@ -149,6 +176,7 @@ const http_header_0 = [
 const convertedHttpHeader0 = ConvertBytesArrayToString(http_header_0);
 console.log("convertedHttpHeader0 \n", convertedHttpHeader0);
 
+// content-encoding: gzip
 const http_header_1 = [
   99, 111, 110, 116, 101, 110, 116, 45, 101, 110, 99, 111, 100, 105, 110, 103,
   58, 32, 103, 122, 105, 112,
@@ -156,6 +184,18 @@ const http_header_1 = [
 const convertedHttpHeader1 = ConvertBytesArrayToString(http_header_1);
 console.log("convertedHttpHeader1 \n", convertedHttpHeader1);
 
+// {
+//   "data": {
+//       "items": [
+//           {
+//               "data": "Artist",
+//               "profile": {
+//                "name": "Taylor Swift"
+//               }
+//           }
+//       ]
+//   }
+// }
 const http_body = [
   123, 13, 10, 32, 32, 32, 34, 100, 97, 116, 97, 34, 58, 32, 123, 13, 10, 32,
   32, 32, 32, 32, 32, 32, 34, 105, 116, 101, 109, 115, 34, 58, 32, 91, 13, 10,

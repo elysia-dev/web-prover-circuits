@@ -211,7 +211,7 @@ template HTTPVerification(DATA_BYTES, MAX_NUMBER_OF_HEADERS, PUBLIC_IO_LENGTH) {
     log("line_digest: ", line_digest[DATA_BYTES]);
     log("main_monomial: ", main_monomials[DATA_BYTES - 1] * ciphertext_digest);
     log("body_digest: ", body_digest[DATA_BYTES - 1]);
-    log("body_monomials: ", body_monomials[DATA_BYTES - 1])
+    log("body_monomials: ", body_monomials[DATA_BYTES - 1]);
 
     for (var i = 0 ; i < PUBLIC_IO_LENGTH ; i++) {
         log("step_out[",i,"] = ", step_out[i]);
